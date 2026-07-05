@@ -1,6 +1,7 @@
 import { Virtuoso } from 'react-virtuoso';
 import { useCallback, useState, useMemo, useRef, forwardRef, useImperativeHandle, useEffect } from 'react';
 import { useSnapshot } from 'valtio';
+import { listen } from '@tauri-apps/api/event';
 import { useCustomScrollbar } from '@shared/hooks/useCustomScrollbar';
 import { useSortableList } from '@shared/hooks/useSortable';
 import { useNavigation } from '@shared/hooks/useNavigation';
@@ -25,7 +26,9 @@ const ClipboardList = forwardRef(({
     startIndex: 0,
     endIndex: 0
   });
+  const isWindowHiddenRef = useRef(false);
   const loadTimeoutRef = useRef(null);
+  const loadMissingRangeRef = useRef(null);
   const onScrollStateChangeRef = useRef(onScrollStateChange);
   const snap = useSnapshot(navigationStore);
   const clipSnap = useSnapshot(clipboardStore);
@@ -184,22 +187,84 @@ const ClipboardList = forwardRef(({
     onScrollStateChangeRef.current?.({ atTop: true });
   }, [clipSnap.filter, clipSnap.contentType, scrollerElement]);
 
-  const ensureRangeLoaded = useCallback(async (startIndex, endIndex) => {
-    const missingIndexes = [];
-    for (let index = startIndex; index <= endIndex; index += 1) {
+  const loadMissingRange = useCallback(async (startIndex, endIndex) => {
+    if (clipSnap.loading || clipSnap.totalCount <= 0) {
+      return false;
+    }
+
+    let safeStart = Number.isInteger(startIndex) ? startIndex : 0;
+    let safeEnd = Number.isInteger(endIndex) ? endIndex : Math.min(49, clipSnap.totalCount - 1);
+
+    if (safeEnd < safeStart) {
+      safeStart = 0;
+      safeEnd = Math.min(49, clipSnap.totalCount - 1);
+    }
+
+    safeStart = Math.max(0, Math.min(safeStart, clipSnap.totalCount - 1));
+    safeEnd = Math.max(safeStart, Math.min(safeEnd, clipSnap.totalCount - 1));
+
+    let rangeStart = -1;
+    let rangeEnd = -1;
+    for (let index = safeStart; index <= safeEnd; index += 1) {
       if (!clipboardStore.hasItem(index)) {
-        missingIndexes.push(index);
+        if (rangeStart === -1) rangeStart = index;
+        rangeEnd = index;
       }
     }
 
-    if (!missingIndexes.length) {
-      return;
+    if (rangeStart === -1) {
+      return false;
     }
 
-    const loadStart = Math.max(0, startIndex - LIST_PRELOAD_PADDING);
-    const loadEnd = Math.min(clipSnap.totalCount - 1, endIndex + LIST_PRELOAD_PADDING);
+    const loadStart = Math.max(0, rangeStart - LIST_PRELOAD_PADDING);
+    const loadEnd = Math.min(clipSnap.totalCount - 1, rangeEnd + LIST_PRELOAD_PADDING);
     await loadClipboardRange(loadStart, loadEnd);
-  }, [clipSnap.totalCount]);
+    return true;
+  }, [clipSnap.loading, clipSnap.totalCount]);
+
+  useEffect(() => {
+    loadMissingRangeRef.current = loadMissingRange;
+  }, [loadMissingRange]);
+
+  useEffect(() => {
+    const handleWindowHide = () => {
+      isWindowHiddenRef.current = true;
+      if (loadTimeoutRef.current) {
+        clearTimeout(loadTimeoutRef.current);
+        loadTimeoutRef.current = null;
+      }
+    };
+
+    const handleWindowShow = () => {
+      isWindowHiddenRef.current = false;
+      setTimeout(() => {
+        const { startIndex, endIndex } = currentRangeRef.current;
+        loadMissingRangeRef.current?.(startIndex, endIndex).catch(error => {
+          console.error('窗口显示后补齐剪贴板范围失败:', error);
+        });
+      }, 80);
+    };
+
+    const setupListeners = async () => {
+      const unlisten1 = await listen('window-hide-animation', handleWindowHide);
+      const unlisten2 = await listen('edge-snap-hide', handleWindowHide);
+      const unlisten3 = await listen('window-show-animation', handleWindowShow);
+      const unlisten4 = await listen('edge-snap-show', handleWindowShow);
+      return () => {
+        unlisten1();
+        unlisten2();
+        unlisten3();
+        unlisten4();
+      };
+    };
+
+    const cleanup = setupListeners();
+    return () => cleanup.then(fn => fn());
+  }, []);
+
+  const ensureRangeLoaded = useCallback(async (startIndex, endIndex) => {
+    await loadMissingRange(startIndex, endIndex);
+  }, [loadMissingRange]);
 
   const buildSelectionEntries = useCallback((startIndex, endIndex) => {
     const entries = [];
@@ -272,6 +337,10 @@ const ClipboardList = forwardRef(({
     startIndex,
     endIndex
   }) => {
+    if (isWindowHiddenRef.current || (scrollerElement && scrollerElement.clientHeight <= 1)) {
+      return;
+    }
+
     currentRangeRef.current = {
       startIndex,
       endIndex
@@ -284,40 +353,28 @@ const ClipboardList = forwardRef(({
     loadTimeoutRef.current = setTimeout(() => {
       clipboardStore.updateViewRange(startIndex, endIndex);
 
-      let rangeStart = -1,
-        rangeEnd = -1;
-      for (let i = startIndex; i <= endIndex && i < clipSnap.totalCount; i++) {
-        if (!clipboardStore.hasItem(i)) {
-          if (rangeStart === -1) rangeStart = i;
-          rangeEnd = i;
-        }
-      }
-      if (rangeStart !== -1) {
-        const loadStart = Math.max(0, rangeStart - LIST_PRELOAD_PADDING);
-        const loadEnd = Math.min(clipSnap.totalCount - 1, rangeEnd + LIST_PRELOAD_PADDING);
-        loadClipboardRange(loadStart, loadEnd);
-      }
+      loadMissingRange(startIndex, endIndex).catch(error => {
+        console.error('加载当前剪贴板范围失败:', error);
+      });
     }, SCROLL_DEBOUNCE_DELAY);
-  }, [clipSnap.totalCount, clipSnap.items]);
+  }, [loadMissingRange, scrollerElement]);
 
   const itemsCount = Object.keys(clipSnap.items).length;
 
   useEffect(() => {
-    if (clipSnap.totalCount > 0 && itemsCount === 0) {
-      const {
-        startIndex,
-        endIndex
-      } = currentRangeRef.current;
-      if (startIndex >= 0 && endIndex >= startIndex && endIndex < clipSnap.totalCount) {
-        loadClipboardRange(
-          Math.max(0, startIndex - LIST_PRELOAD_PADDING),
-          Math.min(clipSnap.totalCount - 1, endIndex + LIST_PRELOAD_PADDING),
-        );
-      } else {
-        loadClipboardRange(0, Math.min(49, clipSnap.totalCount - 1));
-      }
+    if (clipSnap.loading || clipSnap.totalCount <= 0) {
+      return;
     }
-  }, [clipSnap.totalCount, itemsCount]);
+
+    const { startIndex, endIndex } = currentRangeRef.current;
+    const shouldLoadInitialPage = itemsCount === 0 && startIndex === 0 && endIndex === 0;
+    loadMissingRange(
+      startIndex,
+      shouldLoadInitialPage ? Math.min(49, clipSnap.totalCount - 1) : endIndex,
+    ).catch(error => {
+      console.error('补齐剪贴板可见范围失败:', error);
+    });
+  }, [clipSnap.loading, clipSnap.totalCount, itemsCount, loadMissingRange]);
   useImperativeHandle(ref, () => ({
     navigateUp,
     navigateDown,
