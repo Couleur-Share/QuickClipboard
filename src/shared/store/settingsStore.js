@@ -124,27 +124,12 @@ export async function initSettings() {
   // 从 localStorage 恢复 UI 设置
   const fontSize = localStorage.getItem('fontSize')
   const footerLeftRatio = localStorage.getItem('footerLeftRatio')
-
-  const legacyRowHeight = localStorage.getItem('rowHeight')
-  const legacyFileDisplayMode = localStorage.getItem('fileDisplayMode')
-  const legacyListStyle = localStorage.getItem('listStyle')
   
   if (fontSize) settingsStore.fontSize = parseInt(fontSize)
   if (footerLeftRatio) settingsStore.footerLeftRatio = parseFloat(footerLeftRatio)
   
   // 从后端加载所有配置
   await settingsStore.loadSettings()
-
-  // 把旧 localStorage 值迁移到配置文件（仅当后端还是默认值时）
-  const migrateIfNeeded = async (key, legacyValue) => {
-    if (!legacyValue) return
-    if (settingsStore[key] !== defaultSettings[key]) return
-    await settingsStore.saveSetting(key, legacyValue, { showToast: false })
-    try { localStorage.removeItem(key) } catch (_) {}
-  }
-  await migrateIfNeeded('rowHeight', legacyRowHeight)
-  await migrateIfNeeded('fileDisplayMode', legacyFileDisplayMode)
-  await migrateIfNeeded('listStyle', legacyListStyle)
  
   if (settingsStore.language) {
     const i18n = (await import('@shared/i18n')).default
