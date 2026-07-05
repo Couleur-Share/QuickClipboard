@@ -17,6 +17,7 @@ pub struct AppSettings {
     pub auto_low_memory_enabled: bool,
     pub auto_low_memory_idle_minutes: u32,
     pub auto_exit_low_memory_mode: bool,
+    pub memory_optimization_enabled: bool,
     #[serde(alias = "history_limit")]
     pub history_limit: u64,
     pub language: String,
@@ -218,6 +219,7 @@ impl Default for AppSettings {
             auto_low_memory_enabled: false,
             auto_low_memory_idle_minutes: 15,
             auto_exit_low_memory_mode: false,
+            memory_optimization_enabled: false,
             history_limit: 100,
             language: "zh-CN".to_string(),
             theme: "light".to_string(),

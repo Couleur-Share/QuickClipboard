@@ -102,15 +102,35 @@ fn cleanup_descendant_processes(root_pid: u32) {
 
 // 内存清理
 #[cfg(windows)]
-pub fn cleanup_memory() {
+fn compact_process_heap() {
     unsafe {
         if let Ok(heap) = GetProcessHeap() {
             let _ = HeapCompact(heap, windows::Win32::System::Memory::HEAP_FLAGS(0));
         }
+    }
+}
 
+#[cfg(windows)]
+pub fn cleanup_memory() {
+    compact_process_heap();
+}
+
+#[cfg(windows)]
+pub fn cleanup_memory_with_working_set_trim() {
+    compact_process_heap();
+    unsafe {
         let process = GetCurrentProcess();
         trim_process_working_set(process);
         cleanup_descendant_processes(std::process::id());
+    }
+}
+
+#[cfg(windows)]
+pub fn cleanup_memory_respecting_settings() {
+    if crate::get_settings().memory_optimization_enabled {
+        cleanup_memory_with_working_set_trim();
+    } else {
+        cleanup_memory();
     }
 }
 
@@ -122,7 +142,7 @@ pub fn schedule_cleanup_after_window_inactive() {
 
     std::thread::spawn(|| {
         std::thread::sleep(std::time::Duration::from_millis(HIDE_CLEANUP_DELAY_MS));
-        cleanup_memory();
+        cleanup_memory_respecting_settings();
         HIDE_CLEANUP_PENDING.store(false, Ordering::SeqCst);
     });
 }
@@ -136,6 +156,12 @@ pub fn schedule_cleanup_after_main_window_hide() {
 pub fn cleanup_memory() {}
 
 #[cfg(not(windows))]
+pub fn cleanup_memory_with_working_set_trim() {}
+
+#[cfg(not(windows))]
+pub fn cleanup_memory_respecting_settings() {}
+
+#[cfg(not(windows))]
 pub fn schedule_cleanup_after_window_inactive() {}
 
 #[cfg(not(windows))]
@@ -144,6 +170,6 @@ pub fn schedule_cleanup_after_main_window_hide() {}
 pub fn init() {
     std::thread::spawn(|| {
         std::thread::sleep(std::time::Duration::from_secs(3));
-        cleanup_memory();
+        cleanup_memory_respecting_settings();
     });
 }

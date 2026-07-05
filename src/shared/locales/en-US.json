@@ -478,6 +478,8 @@
       "autoLowMemoryIdleMinutesDesc": "Automatically enter low memory mode when no window interaction occurs for the selected duration",
       "autoExitLowMemoryMode": "Auto Exit Low Memory Mode",
       "autoExitLowMemoryModeDesc": "Automatically exit low memory mode when showing the clipboard or taking a screenshot in low memory mode",
+      "memoryOptimization": "Memory Optimization",
+      "memoryOptimizationDesc": "Enabling this can greatly reduce memory usage while windows are in the background, but turn it off if you encounter stuttering.",
       "showTrayIcon": "Show Tray Icon",
       "showTrayIconDesc": "Show QuickClipboard icon in the system tray. When hidden, use shortcut to open settings and re-enable",
       "tooltipsEnabled": "Show Tooltips",

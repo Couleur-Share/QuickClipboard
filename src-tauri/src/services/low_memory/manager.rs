@@ -72,7 +72,7 @@ pub fn enter_low_memory_mode(app: &AppHandle) -> Result<(), String> {
     destroy_all_webviews(app);
 
     // 清理内存
-    crate::services::memory::cleanup_memory();
+    crate::services::memory::cleanup_memory_respecting_settings();
     
     let _ = crate::services::notification::show_notification(
         app,

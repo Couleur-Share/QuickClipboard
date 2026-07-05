@@ -21,6 +21,7 @@ export const defaultSettings = {
   autoLowMemoryEnabled: false,
   autoLowMemoryIdleMinutes: 15,
   autoExitLowMemoryMode: false,
+  memoryOptimizationEnabled: false,
   historyLimit: 100,
   language: 'zh-CN',
   

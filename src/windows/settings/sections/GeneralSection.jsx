@@ -200,6 +200,10 @@ function GeneralSection({
         <Toggle checked={settings.autoExitLowMemoryMode} onChange={checked => onSettingChange('autoExitLowMemoryMode', checked)} />
       </SettingItem>
 
+      <SettingItem label={t('settings.general.memoryOptimization')} description={t('settings.general.memoryOptimizationDesc')}>
+        <Toggle checked={settings.memoryOptimizationEnabled} onChange={checked => onSettingChange('memoryOptimizationEnabled', checked)} />
+      </SettingItem>
+
       <SettingItem label={t('settings.general.showTrayIcon')} description={t('settings.general.showTrayIconDesc')}>
         <Toggle checked={settings.showTrayIcon} onChange={checked => onSettingChange('showTrayIcon', checked)} />
       </SettingItem>
