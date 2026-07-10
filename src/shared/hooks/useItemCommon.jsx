@@ -5,6 +5,7 @@ import { favoritesStore } from '@shared/store/favoritesStore';
 import { TextContent, ImageContent, FileContent, HtmlContent } from '@windows/main/components/ClipboardContent';
 import { getPrimaryType, hasType } from '@shared/utils/contentType';
 import {
+  DISPLAY_FORMAT_TEXT,
   DISPLAY_FORMAT_HTML,
   DISPLAY_FORMAT_IMAGE,
   resolveDisplayFormatByPriority,
@@ -164,7 +165,9 @@ export function useItemCommon(item, options = {}) {
       return <FileContent item={item} compact={compact} searchKeyword={searchKeyword} maxContentHeightPx={autoRowMaxContentHeightPx} disableExternalDrag={disableExternalDrag} disableExternalTooltip={disableExternalTooltip} />;
     }
 
-    const displayFormat = resolveDisplayFormatByPriority(item, settings.displayPriorityOrder);
+    const displayFormat = searchKeyword
+      ? DISPLAY_FORMAT_TEXT
+      : resolveDisplayFormatByPriority(item, settings.displayPriorityOrder);
 
     if (displayFormat === DISPLAY_FORMAT_IMAGE) {
       return <ImageContent item={item} maxContentHeightPx={autoRowMaxContentHeightPx} disableExternalDrag={disableExternalDrag} disableExternalTooltip={disableExternalTooltip} />;

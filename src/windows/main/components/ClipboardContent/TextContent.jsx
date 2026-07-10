@@ -1,6 +1,6 @@
-import { useRef, useEffect, useLayoutEffect, useMemo, useState } from 'react';
+import { useRef, useLayoutEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { highlightText, scrollToFirstHighlight } from '@shared/utils/highlightText';
+import { highlightText } from '@shared/utils/highlightText';
 import { toast, TOAST_POSITIONS, TOAST_SIZES } from '@shared/store/toastStore';
 import Tooltip from '@shared/components/common/Tooltip.jsx';
 import { formatColorCodeLike, parseStandaloneColorCode } from '@shared/utils/colorCode';
@@ -19,8 +19,6 @@ function TextContent({
   const { t } = useTranslation();
   const wrapperRef = useRef(null);
   const containerRef = useRef(null);
-  const hasScrolledRef = useRef(false);
-  const prevKeywordRef = useRef('');
   const [isPickingColor, setIsPickingColor] = useState(false);
   const colorInfo = useMemo(() => parseStandaloneColorCode(content), [content]);
   const pickColorLabel = t('clipboard.pickColor', '选择颜色');
@@ -29,24 +27,8 @@ function TextContent({
     return match ? parseInt(match[1], 10) : null;
   }, [lineClampClass]);
   const shouldUseAdaptiveLineHeight = rowHeight !== 'auto'
-    && !searchKeyword
     && Number.isFinite(clampLineCount)
     && clampLineCount > 0;
-
-  useEffect(() => {
-    if (searchKeyword !== prevKeywordRef.current) {
-      hasScrolledRef.current = false;
-      prevKeywordRef.current = searchKeyword;
-    }
-
-    if (searchKeyword && containerRef.current && !hasScrolledRef.current) {
-      requestAnimationFrame(() => {
-        if (scrollToFirstHighlight(containerRef.current)) {
-          hasScrolledRef.current = true;
-        }
-      });
-    }
-  }, [searchKeyword, content]);
 
   useLayoutEffect(() => {
     const wrapper = wrapperRef.current;
@@ -156,8 +138,8 @@ function TextContent({
     ? highlightText(content, searchKeyword)
     : content;
 
-  const clampClass = searchKeyword || rowHeight === 'auto' ? '' : lineClampClass;
-  const autoClampStyle = !searchKeyword && rowHeight === 'auto'
+  const clampClass = rowHeight === 'auto' ? '' : lineClampClass;
+  const autoClampStyle = rowHeight === 'auto'
     ? {
         display: '-webkit-box',
         WebkitLineClamp: autoRowMaxLines,

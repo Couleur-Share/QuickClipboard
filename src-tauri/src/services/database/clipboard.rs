@@ -1,7 +1,7 @@
 use super::models::{ClipboardDataItem, ClipboardDataSeed, ClipboardItem, PaginatedResult, QueryParams};
 use super::connection::{with_connection, MAX_CONTENT_LENGTH};
 use crate::services::webdav_sync::types::{CloudRecord, CloudRecordMeta};
-use crate::utils::{truncate_string, truncate_around_keyword, truncate_html};
+use crate::utils::{is_textual_content_type, truncate_string, truncate_around_keyword, truncate_html};
 use rusqlite::{params, OptionalExtension};
 use std::collections::{HashMap, HashSet};
 use chrono;
@@ -268,7 +268,7 @@ pub fn query_clipboard_items(params: QueryParams) -> Result<PaginatedResult<Clip
                 let content_type: String = row.get(6)?;
                 let char_count: Option<i64> = row.get(15)?;
                 
-                let (truncated_content, truncated_html) = if content_type == "text" || content_type == "rich_text" || content_type == "link" {
+                let (truncated_content, truncated_html) = if is_textual_content_type(&content_type) {
                     let truncated_content = if content.len() > MAX_CONTENT_LENGTH {
                         if let Some(ref keyword) = search_keyword {
                             if !keyword.trim().is_empty() {
@@ -781,7 +781,7 @@ pub fn get_clipboard_item_by_id_with_limit(id: i64, max_content_length: Option<u
                 let content_type: String = row.get(6)?;
                 let char_count: Option<i64> = row.get(15)?;
                 let final_content = if let Some(max_len) = max_content_length {
-                    let is_text_type = content_type == "text" || content_type == "rich_text" || content_type == "link";
+                    let is_text_type = is_textual_content_type(&content_type);
                     if is_text_type && content.len() > max_len {
                         truncate_string(content.clone(), max_len)
                     } else {
