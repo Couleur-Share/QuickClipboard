@@ -6,7 +6,7 @@ pub mod raw_input;
 pub mod focus;
 pub mod app_filter;
 pub mod win_v_hotkey;
-pub mod elevate;
+pub mod startup;
 
 pub use focus::{focus_clipboard_window, restore_last_focus, save_current_focus};
 pub use app_filter::{
@@ -19,10 +19,11 @@ pub use app_filter::{
 };
 #[cfg(target_os = "windows")]
 pub use app_filter::{start_clipboard_source_monitor, stop_clipboard_source_monitor};
-pub use elevate::{
-    is_running_as_admin, 
+pub use startup::{
+    configure_auto_start,
+    get_auto_start_status,
+    is_admin_task_ready,
+    is_running_as_admin,
+    switch_to_standard_mode,
     try_elevate_and_restart,
-    is_scheduled_task_exists,
-    create_scheduled_task,
-    delete_scheduled_task,
 };

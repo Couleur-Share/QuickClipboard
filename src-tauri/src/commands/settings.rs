@@ -235,56 +235,19 @@ pub fn get_data_directory_cmd() -> Result<String, String> {
 
 // 设置开机自启动
 #[tauri::command]
-pub fn set_auto_start(app: tauri::AppHandle, enabled: bool) -> Result<(), String> {
-    #[cfg(desktop)]
-    {
-        use tauri_plugin_autostart::ManagerExt;
-        
-        let autostart_manager = app.autolaunch();
-        
-        let current_status = autostart_manager.is_enabled().unwrap_or(false);
-        
-        if current_status != enabled {
-            if enabled {
-                if let Err(e) = autostart_manager.enable() {
-                    let err_msg = format!("{}", e);
-                    let friendly_msg = if err_msg.contains("permission") || err_msg.contains("access") {
-                        "启用开机自启动失败：权限不足，请检查杀毒软件是否拦截"
-                    } else if err_msg.contains("registry") {
-                        "启用开机自启动失败：无法写入注册表"
-                    } else {
-                        &format!("启用开机自启动失败: {}", err_msg)
-                    };
-                    return Err(friendly_msg.to_string());
-                }
-            } else if let Err(e) = autostart_manager.disable() {
-                return Err(format!("禁用开机自启动失败: {}", e));
-            }
-        }
-    }
-
+pub fn set_auto_start(enabled: bool) -> Result<(), String> {
     let mut settings = get_settings();
+    crate::services::system::configure_auto_start(enabled, settings.run_as_admin)?;
     settings.auto_start = enabled;
     update_settings(settings)?;
-
     Ok(())
 }
 
 // 检查开机自启动状态
 #[tauri::command]
-pub fn get_auto_start_status(app: tauri::AppHandle) -> Result<bool, String> {
-    #[cfg(desktop)]
-    {
-        use tauri_plugin_autostart::ManagerExt;
-        
-        let autostart_manager = app.autolaunch();
-        return autostart_manager.is_enabled().map_err(|e| e.to_string());
-    }
-    
-    #[cfg(not(desktop))]
-    {
-        Ok(false)
-    }
+pub fn get_auto_start_status() -> Result<bool, String> {
+    let settings = get_settings();
+    crate::services::system::get_auto_start_status(settings.run_as_admin)
 }
 
 // 重新加载快捷键
@@ -396,13 +359,19 @@ pub fn save_quickpaste_window_size(width: u32, height: u32) -> Result<(), String
 // 设置管理员权限运行
 #[tauri::command]
 pub fn set_run_as_admin(enabled: bool) -> Result<(), String> {
-    use crate::services::system::{delete_scheduled_task, is_running_as_admin};
-
-    if !enabled && is_running_as_admin() {
-        let _ = delete_scheduled_task();
-    }
-    
     let mut settings = get_settings();
+    if settings.run_as_admin == enabled {
+        return Ok(());
+    }
+
+    if enabled {
+        if crate::services::system::is_running_as_admin() {
+            crate::services::system::configure_auto_start(settings.auto_start, true)?;
+        }
+    } else {
+        crate::services::system::switch_to_standard_mode(settings.auto_start)?;
+    }
+
     settings.run_as_admin = enabled;
     update_settings(settings)?;
     Ok(())
@@ -422,18 +391,18 @@ pub fn is_running_as_admin() -> bool {
 
 // 检查计划任务是否存在
 #[tauri::command]
-pub fn is_admin_task_ready() -> bool {
-    crate::services::system::is_scheduled_task_exists()
+pub fn is_admin_task_ready() -> Result<bool, String> {
+    crate::services::system::is_admin_task_ready(get_settings().auto_start)
 }
 
 // 以管理员权限重启程序
 #[tauri::command]
 pub fn restart_as_admin(app: tauri::AppHandle) -> Result<(), String> {
-    if crate::services::system::try_elevate_and_restart() {
+    if crate::services::system::try_elevate_and_restart(get_settings().auto_start)? {
         app.exit(0);
         Ok(())
     } else {
-        Err("请求管理员权限失败，用户取消了UAC提示".to_string())
+        Err("请求管理员权限失败，用户取消了 UAC 提示".to_string())
     }
 }
 

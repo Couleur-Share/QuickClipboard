@@ -39,6 +39,17 @@ const STARTUP_UPDATE_CHECK_DELAY_MS: u64 = 800;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(windows)]
+    if services::system::startup::is_uninstall_cleanup_requested() {
+        match services::system::startup::cleanup_startup_entries() {
+            Ok(()) => std::process::exit(0),
+            Err(error) => {
+                eprintln!("清理启动配置失败: {error}");
+                std::process::exit(1);
+            }
+        }
+    }
+
     startup_diagnostics::set_startup_stage("执行启动安全检查");
     startup_diagnostics::mark_starting();
     security::check_webview_security();
@@ -68,22 +79,39 @@ pub fn run() {
             }
         }
 
-        startup_diagnostics::set_startup_stage("检查管理员启动配置");
+        startup_diagnostics::set_startup_stage("检查启动与管理员配置");
         #[cfg(not(debug_assertions))]
         if let Ok(settings) = services::settings::load_settings_from_file() {
             if settings.run_as_admin {
                 startup_diagnostics::set_startup_stage("检查管理员启动：检测当前进程权限");
                 let is_admin = services::system::is_running_as_admin();
-                
+
                 if is_admin {
-                    startup_diagnostics::set_startup_stage("检查管理员启动：当前已是管理员，准备同步计划任务");
-                    let _ = services::system::create_scheduled_task();
+                    startup_diagnostics::set_startup_stage("检查管理员启动：校验用户专属启动任务");
+                    if let Err(error) = services::system::startup::repair_startup_configuration(
+                        settings.auto_start,
+                        true,
+                    ) {
+                        eprintln!("修复管理员启动配置失败: {error}");
+                    }
                 } else {
-                    startup_diagnostics::set_startup_stage("检查管理员启动：当前不是管理员，准备提权重启");
-                    if services::system::elevate::try_elevate_and_restart() {
-                        std::process::exit(0);
+                    let launch_context = services::system::startup::launch_context();
+                    if launch_context.admin_relaunch {
+                        eprintln!("管理员重启后的进程仍未获得管理员权限，已停止重复提权");
+                    } else {
+                        startup_diagnostics::set_startup_stage("检查管理员启动：准备启动管理员实例");
+                        match services::system::try_elevate_and_restart(settings.auto_start) {
+                            Ok(true) => std::process::exit(0),
+                            Ok(false) => eprintln!("未获得管理员权限，将以普通权限继续启动"),
+                            Err(error) => eprintln!("启动管理员实例失败: {error}"),
+                        }
                     }
                 }
+            } else if let Err(error) = services::system::startup::repair_startup_configuration(
+                settings.auto_start,
+                false,
+            ) {
+                eprintln!("修复开机自启动配置失败: {error}");
             }
         }
         #[cfg(debug_assertions)]
@@ -365,13 +393,6 @@ pub fn run() {
                 services::low_memory::init_window_activity_timestamp();
                 startup_diagnostics::set_startup_stage("执行 setup：初始化低占用面板");
                 services::low_memory::init_panel(app.handle().clone())?;
-                #[cfg(desktop)]
-                {
-                    use tauri_plugin_autostart::MacosLauncher;
-                    startup_diagnostics::set_startup_stage("执行 setup：初始化开机自启插件");
-                    app.handle().plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, Some(vec![])))?;
-                }
-                
                 startup_diagnostics::set_startup_stage("执行 setup：获取主窗口");
                 let window = app.get_webview_window("main").ok_or("无法获取主窗口")?;
                 let _ = window.set_focusable(false);
