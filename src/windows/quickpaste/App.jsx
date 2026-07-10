@@ -22,15 +22,18 @@ import { playScrollSound } from '@shared/api';
 
 const ITEM_HEIGHT = 52;
 const ITEM_PADDING = 16;
+const WHEEL_GESTURE_IDLE_DELAY = 80;
 
 function QuickPasteWindow() {
   const { t } = useTranslation();
   const containerRef = useRef(null);
-  const [activeIndex, setActiveIndex] = useState(0);
+  const [activeIndex, setActiveIndexState] = useState(0);
   const [isHoveringCancel, setIsHoveringCancel] = useState(false);
   const [isContentReady, setIsContentReady] = useState(false);
   const [visibleCount, setVisibleCount] = useState(5);
   const showRequestRef = useRef(0);
+  const activeIndexRef = useRef(0);
+  const wheelBoundaryRef = useRef({ edge: null, lastEventAt: 0 });
   const navSnap = useSnapshot(navigationStore);
   const groupSnap = useSnapshot(groupsStore);
   const clipSnap = useSnapshot(clipboardStore);
@@ -44,6 +47,15 @@ function QuickPasteWindow() {
   const totalCount = isClipboardTab ? clipSnap.totalCount : favSnap.totalCount;
   const itemsArray = useMemo(() => Array.from({ length: totalCount }, (_, i) => currentItems[i] || null), [currentItems, totalCount]);
   const title = isClipboardTab ? t('settings.quickpaste.window.clipboardHistory') : groupSnap.currentGroup;
+
+  const resetWheelBoundary = useCallback(() => {
+    wheelBoundaryRef.current = { edge: null, lastEventAt: 0 };
+  }, []);
+
+  const setActiveIndex = useCallback((index) => {
+    activeIndexRef.current = index;
+    setActiveIndexState(index);
+  }, []);
 
   // 计算可见项目数量
   useEffect(() => {
@@ -120,8 +132,9 @@ function QuickPasteWindow() {
     };
   }, []);
   const handleItemClick = useCallback((index) => {
+    resetWheelBoundary();
     setActiveIndex(index);
-  }, []);
+  }, [resetWheelBoundary, setActiveIndex]);
   useEffect(() => {
     applyThemeToBody(theme, 'quickpaste');
   }, [theme, lightThemeStyle, darkThemeStyle, effectiveTheme]);
@@ -133,7 +146,7 @@ function QuickPasteWindow() {
       setIsContentReady(false);
 
       if (isHoveringCancel) return;
-      const item = itemsArray[activeIndex];
+      const item = itemsArray[activeIndexRef.current];
       if (!item) return;
       try {
         isClipboardTab ? await pasteClipboardItem(item.id) : await pasteFavorite(item.id);
@@ -142,12 +155,13 @@ function QuickPasteWindow() {
       }
     });
     return () => unlisten.then(fn => fn());
-  }, [isHoveringCancel, activeIndex, itemsArray, isClipboardTab]);
+  }, [isHoveringCancel, itemsArray, isClipboardTab]);
   useEffect(() => {
     const unlisten = listen('quickpaste-show', async () => {
       const requestId = showRequestRef.current + 1;
       showRequestRef.current = requestId;
       setIsContentReady(false);
+      resetWheelBoundary();
       setActiveIndex(0);
       setIsHoveringCancel(false);
 
@@ -171,7 +185,7 @@ function QuickPasteWindow() {
       showRequestRef.current += 1;
       unlisten.then(fn => fn());
     };
-  }, []);
+  }, [resetWheelBoundary, setActiveIndex]);
   useEffect(() => {
     const unlisten = listen('navigation-changed', async event => {
       const { activeTab, currentGroup } = event.payload;
@@ -188,36 +202,64 @@ function QuickPasteWindow() {
     return () => unlisten.then(fn => fn());
   }, []);
   useEffect(() => {
+    resetWheelBoundary();
     setActiveIndex(0);
-  }, [navSnap.activeTab, groupSnap.currentGroup, totalCount]);
+  }, [navSnap.activeTab, groupSnap.currentGroup, totalCount, resetWheelBoundary, setActiveIndex]);
 
   // 滚轮切换项
   useEffect(() => {
     const handleWheel = (e) => {
       e.preventDefault();
-      playScrollSound();
-      setActiveIndex(prev => {
-        const max = totalCount - 1;
-        return e.deltaY > 0
-          ? (prev < max ? prev + 1 : 0)
-          : (prev > 0 ? prev - 1 : max);
-      });
+
+      if (e.deltaY === 0 || totalCount <= 1) {
+        return;
+      }
+
+      const direction = e.deltaY > 0 ? 1 : -1;
+      const max = totalCount - 1;
+      const currentIndex = activeIndexRef.current;
+      const edge = direction > 0 ? 'end' : 'start';
+      const reachedEdge = direction > 0 ? currentIndex === max : currentIndex === 0;
+
+      if (!reachedEdge) {
+        resetWheelBoundary();
+        setActiveIndex(currentIndex + direction);
+        playScrollSound();
+        return;
+      }
+
+      const wheelBoundary = wheelBoundaryRef.current;
+      const now = performance.now();
+      if (
+        wheelBoundary.edge === edge
+        && now - wheelBoundary.lastEventAt >= WHEEL_GESTURE_IDLE_DELAY
+      ) {
+        resetWheelBoundary();
+        setActiveIndex(direction > 0 ? 0 : max);
+        playScrollSound();
+        return;
+      }
+
+      wheelBoundaryRef.current = { edge, lastEventAt: now };
     };
 
     window.addEventListener('wheel', handleWheel, { passive: false });
-    return () => window.removeEventListener('wheel', handleWheel);
-  }, [totalCount]);
+    return () => {
+      window.removeEventListener('wheel', handleWheel);
+      resetWheelBoundary();
+    };
+  }, [totalCount, resetWheelBoundary, setActiveIndex]);
 
   useEffect(() => {
     const unlisten = listen('quickpaste-next', () => {
+      resetWheelBoundary();
       playScrollSound();
-      setActiveIndex(prev => {
-        const max = totalCount - 1;
-        return prev < max ? prev + 1 : 0;
-      });
+      const max = totalCount - 1;
+      const currentIndex = activeIndexRef.current;
+      setActiveIndex(currentIndex < max ? currentIndex + 1 : 0);
     });
     return () => unlisten.then(fn => fn());
-  }, [totalCount]);
+  }, [totalCount, resetWheelBoundary, setActiveIndex]);
   useEffect(() => {
     let resizeTimeout;
     const handleResize = async () => {
