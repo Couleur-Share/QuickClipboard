@@ -52,11 +52,17 @@ export async function updateFavorite(id, title, content, groupName, htmlContent 
 
 // 删除收藏
 export async function deleteFavorite(id) {
-  return await invoke('delete_quick_text', { id })
+  const result = await invoke('delete_quick_text', { id })
+  const { clipboardStore } = await import('@shared/store/clipboardStore')
+  clipboardStore.clearFavoriteIds([id])
+  return result
 }
 
 export async function deleteFavoriteItems(ids) {
-  return await invoke('delete_favorite_items', { ids })
+  const result = await invoke('delete_favorite_items', { ids })
+  const { clipboardStore } = await import('@shared/store/clipboardStore')
+  clipboardStore.clearFavoriteIds(ids)
+  return result
 }
 
 // 移动收藏项位置（拖拽排序）

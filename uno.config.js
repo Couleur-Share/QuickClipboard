@@ -46,6 +46,7 @@ export default defineConfig({
         'panel-2': 'var(--qc-panel-2, #e5e7eb)',
         hover: 'var(--qc-hover, rgba(156, 163, 175, 0.25))',
         active: 'var(--qc-active, rgba(59, 130, 246, 0.12))',
+        favorite: 'var(--qc-favorite, #eab308)',
         border: 'var(--qc-border, rgba(17, 24, 39, 0.12))',
         'border-strong': 'var(--qc-border-strong, rgba(17, 24, 39, 0.22))',
       },

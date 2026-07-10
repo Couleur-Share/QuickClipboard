@@ -146,6 +146,9 @@
     "edit": "Edit Favorite",
     "editTitle": "Edit Title",
     "titlePlaceholder": "Enter title...",
+    "remove": "Remove from Favorites",
+    "removed": "Removed from Favorites",
+    "removeFailed": "Failed to remove from Favorites",
     "confirmDelete": "Are you sure you want to delete this favorite item?",
     "confirmDeleteTitle": "Confirm Delete"
   },

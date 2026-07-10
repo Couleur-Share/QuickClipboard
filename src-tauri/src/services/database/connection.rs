@@ -118,6 +118,7 @@ fn create_tables(conn: &Connection) -> Result<(), String> {
             html_content TEXT,
             content_type TEXT NOT NULL DEFAULT 'text',
             image_id TEXT,
+            source_clipboard_uuid TEXT,
             group_name TEXT NOT NULL DEFAULT '全部',
             item_order INTEGER NOT NULL DEFAULT 0,
             created_at INTEGER NOT NULL,
@@ -295,6 +296,20 @@ fn create_tables(conn: &Connection) -> Result<(), String> {
             .map_err(|e| format!("添加收藏来源设备字段失败: {}", e))?;
     }
 
+    let fav_source_clipboard_uuid_exists = conn
+        .prepare("PRAGMA table_info(favorites)")
+        .and_then(|mut stmt| {
+            let columns = stmt.query_map([], |row| Ok(row.get::<_, String>(1)?))?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(columns.iter().any(|c| c == "source_clipboard_uuid"))
+        })
+        .unwrap_or(false);
+
+    if !fav_source_clipboard_uuid_exists {
+        conn.execute("ALTER TABLE favorites ADD COLUMN source_clipboard_uuid TEXT", [])
+            .map_err(|e| format!("添加收藏来源历史字段失败: {}", e))?;
+    }
+
     let group_source_device_id_exists = conn
         .prepare("PRAGMA table_info(groups)")
         .and_then(|mut stmt| {
@@ -340,6 +355,13 @@ fn create_tables(conn: &Connection) -> Result<(), String> {
         "CREATE INDEX IF NOT EXISTS idx_favorites_group ON favorites(group_name, item_order)",
         [],
     ).map_err(|e| format!("创建收藏索引失败: {}", e))?;
+
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_favorites_source_clipboard_uuid
+         ON favorites(source_clipboard_uuid)
+         WHERE source_clipboard_uuid IS NOT NULL AND source_clipboard_uuid <> ''",
+        [],
+    ).map_err(|e| format!("创建收藏来源历史唯一索引失败: {}", e))?;
 
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_sync_tombstones_deleted_at ON sync_tombstones(deleted_at)",

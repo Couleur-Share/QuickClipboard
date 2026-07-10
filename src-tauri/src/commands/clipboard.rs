@@ -196,6 +196,7 @@ pub async fn paste_content(params: PasteParams, app: tauri::AppHandle) -> Result
             let item = ClipboardItem {
                 id: 0,
                 uuid: None,
+                favorite_id: Some(favorite_id.clone()),
                 source_device_id: None,
                 is_remote: false,
                 content: favorite.content,

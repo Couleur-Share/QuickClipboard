@@ -401,6 +401,7 @@ mod tests {
         crate::services::database::ClipboardItem {
             id: 1,
             uuid: Some("u".to_string()),
+            favorite_id: None,
             source_device_id: None,
             is_remote: false,
             content: "c".to_string(),

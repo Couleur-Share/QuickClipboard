@@ -98,6 +98,28 @@ export const clipboardStore = proxy({
     return Number.isInteger(entry?.[0]) ? entry[0] : null
   },
 
+  getLoadedItemById(id) {
+    const index = this.findLoadedItemIndex(id)
+    return Number.isInteger(index) ? this.items[index] : null
+  },
+
+  setFavoriteId(id, favoriteId) {
+    const index = this.findLoadedItemIndex(id)
+    if (!Number.isInteger(index) || !this.items[index]) return
+    this.items[index] = { ...this.items[index], favorite_id: favoriteId || null }
+  },
+
+  clearFavoriteIds(favoriteIds) {
+    const favoriteIdSet = new Set(favoriteIds.filter(Boolean))
+    if (!favoriteIdSet.size) return
+
+    for (const [key, item] of Object.entries(this.items)) {
+      if (item?.favorite_id && favoriteIdSet.has(item.favorite_id)) {
+        this.items[key] = { ...item, favorite_id: null }
+      }
+    }
+  },
+
   addItem(item) {
     this.items = {}
   },

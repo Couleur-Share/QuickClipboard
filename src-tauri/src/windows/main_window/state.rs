@@ -95,7 +95,9 @@ pub fn mark_clipboard_refresh_pending() {
 }
 
 pub fn mark_favorites_refresh_pending() {
-    WINDOW_STATE.write().favorites_refresh_pending = true;
+    let mut state = WINDOW_STATE.write();
+    state.favorites_refresh_pending = true;
+    state.clipboard_refresh_pending = true;
 }
 
 pub fn mark_groups_refresh_pending() {

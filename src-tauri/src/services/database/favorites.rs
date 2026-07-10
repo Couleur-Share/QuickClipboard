@@ -686,12 +686,38 @@ pub fn move_favorite_item(from_id: String, to_id: String) -> Result<(), String> 
 
 // 从剪贴板历史添加到收藏
 pub fn add_clipboard_to_favorites(clipboard_id: i64, group_name: Option<String>) -> Result<FavoriteItem, String> {
-    use uuid::Uuid;
-    
     let group_name = group_name.unwrap_or_else(|| "全部".to_string());
+    let source_clipboard_uuid = super::clipboard::ensure_clipboard_item_uuid(clipboard_id)?;
     let raw_formats = super::clipboard::get_clipboard_data_items("clipboard", &clipboard_id.to_string())?;
     
-    let favorite = with_connection(|conn| {
+    let (favorite, created) = with_connection(|conn| {
+        let existing = conn.query_row(
+            "SELECT id, title, content, html_content, content_type, image_id, group_name,
+                    item_order, paste_count, char_count, created_at, updated_at
+             FROM favorites WHERE source_clipboard_uuid = ?1 LIMIT 1",
+            params![&source_clipboard_uuid],
+            |row| {
+                Ok(FavoriteItem {
+                    id: row.get(0)?,
+                    title: row.get(1)?,
+                    content: row.get(2)?,
+                    html_content: row.get(3)?,
+                    content_type: row.get(4)?,
+                    image_id: row.get(5)?,
+                    group_name: row.get(6)?,
+                    item_order: row.get(7)?,
+                    paste_count: row.get(8)?,
+                    char_count: row.get(9)?,
+                    created_at: row.get(10)?,
+                    updated_at: row.get(11)?,
+                })
+            },
+        ).optional()?;
+
+        if let Some(existing) = existing {
+            return Ok((existing, false));
+        }
+
         let (content, html_content, content_type, image_id, char_count) = conn.query_row(
             "SELECT content, html_content, content_type, image_id, char_count FROM clipboard WHERE id = ?",
             params![clipboard_id],
@@ -714,7 +740,7 @@ pub fn add_clipboard_to_favorites(clipboard_id: i64, group_name: Option<String>)
             char_count
         };
         
-        let id = Uuid::new_v4().to_string();
+        let id = source_clipboard_uuid.clone();
         let now = chrono::Local::now().timestamp();
         
         let max_order: i64 = conn.query_row(
@@ -724,9 +750,15 @@ pub fn add_clipboard_to_favorites(clipboard_id: i64, group_name: Option<String>)
         ).unwrap_or(0);
         let new_order = max_order + 1;
         
+        super::tombstones::delete_sync_tombstone_in_conn(
+            conn,
+            super::tombstones::COLLECTION_FAVORITES,
+            &id,
+        )?;
+
         conn.execute(
-            "INSERT INTO favorites (id, title, content, html_content, content_type, image_id, group_name, item_order, char_count, created_at, updated_at) 
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+            "INSERT INTO favorites (id, title, content, html_content, content_type, image_id, source_clipboard_uuid, group_name, item_order, char_count, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
             params![
                 &id,
                 &title,
@@ -734,6 +766,7 @@ pub fn add_clipboard_to_favorites(clipboard_id: i64, group_name: Option<String>)
                 &html_content,
                 &content_type,
                 &image_id,
+                &source_clipboard_uuid,
                 &group_name,
                 new_order,
                 final_char_count,
@@ -742,7 +775,7 @@ pub fn add_clipboard_to_favorites(clipboard_id: i64, group_name: Option<String>)
             ],
         )?;
         
-        Ok(FavoriteItem {
+        Ok((FavoriteItem {
             id,
             title,
             content,
@@ -755,10 +788,10 @@ pub fn add_clipboard_to_favorites(clipboard_id: i64, group_name: Option<String>)
             char_count: final_char_count,
             created_at: now,
             updated_at: now,
-        })
+        }, true))
     })?;
 
-    if !raw_formats.is_empty() {
+    if created && !raw_formats.is_empty() {
         let raw_seeds = raw_formats
             .into_iter()
             .map(|item| ClipboardDataSeed {

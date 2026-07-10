@@ -119,15 +119,7 @@ export async function moveClipboardItemById(fromId, toId) {
 // 添加到常用文本
 export async function addToFavorites(id) {
   try {
-    const result = await invoke('add_clipboard_to_favorites', { id })
-    const favoriteItem = await getFavoriteItemById(result.id)
-    await invoke('emit_quick_texts_updated', {
-      payload: {
-        kind: 'created',
-        item: favoriteItem,
-        insert_index: 0,
-      },
-    })
+    await addClipboardToFavorites(id)
     return true
   } catch (error) {
     console.error('添加到常用文本失败:', error)
@@ -225,7 +217,14 @@ export async function getFavoriteItemById(id, maxLength = null) {
 
 // 添加剪贴板项到收藏
 export async function addClipboardToFavorites(id, groupName) {
+  const { clipboardStore } = await import('@shared/store/clipboardStore')
+  const loadedItem = clipboardStore.getLoadedItemById(id)
+  if (loadedItem?.favorite_id) {
+    return await getFavoriteItemById(loadedItem.favorite_id)
+  }
+
   const result = await invoke('add_clipboard_to_favorites', { id, groupName })
+  clipboardStore.setFavoriteId(id, result.id)
   const favoriteItem = await getFavoriteItemById(result.id)
   await invoke('emit_quick_texts_updated', {
     payload: {
@@ -234,6 +233,7 @@ export async function addClipboardToFavorites(id, groupName) {
       insert_index: 0,
     },
   })
+  return favoriteItem
 }
 
 

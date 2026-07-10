@@ -27,6 +27,7 @@ body {
   --qc-panel-2: #e5e7eb;
   --qc-hover: rgba(156, 163, 175, 0.25);
   --qc-active: rgba(59, 130, 246, 0.12);
+  --qc-favorite: #eab308;
   --qc-border: rgba(17, 24, 39, 0.12);
   --qc-border-strong: rgba(17, 24, 39, 0.22);
   --qc-search-highlight-bg: #fde047;
@@ -70,6 +71,7 @@ body.theme-dark {
   --qc-panel-2: #2d3342;
   --qc-hover: rgba(148, 163, 184, 0.16);
   --qc-active: rgba(96, 165, 250, 0.18);
+  --qc-favorite: #facc15;
   --qc-border: rgba(255, 255, 255, 0.12);
   --qc-border-strong: rgba(255, 255, 255, 0.22);
 

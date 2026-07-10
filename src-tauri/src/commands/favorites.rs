@@ -241,6 +241,7 @@ fn favorite_to_clipboard_item(id: &str) -> Result<crate::services::database::Cli
     Ok(crate::services::database::ClipboardItem {
         id: 0,
         uuid: None,
+        favorite_id: Some(id.to_string()),
         source_device_id: None,
         is_remote: false,
         content: favorite.content,

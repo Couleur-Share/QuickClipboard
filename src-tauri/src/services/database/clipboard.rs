@@ -241,7 +241,8 @@ pub fn query_clipboard_items(params: QueryParams) -> Result<PaginatedResult<Clip
         }
         
         let query_sql = format!(
-            "SELECT id, uuid, source_device_id, is_remote, content, html_content, content_type, image_id, item_order, is_pinned, paste_count, source_app, source_icon_hash, created_at, updated_at, char_count 
+            "SELECT id, uuid, source_device_id, is_remote, content, html_content, content_type, image_id, item_order, is_pinned, paste_count, source_app, source_icon_hash, created_at, updated_at, char_count,
+                    (SELECT id FROM favorites WHERE source_clipboard_uuid = clipboard.uuid LIMIT 1) AS favorite_id
              FROM clipboard 
              {} 
              ORDER BY is_pinned DESC, item_order DESC, updated_at DESC 
@@ -306,6 +307,7 @@ pub fn query_clipboard_items(params: QueryParams) -> Result<PaginatedResult<Clip
                 Ok((ClipboardItem {
                     id,
                     uuid,
+                    favorite_id: row.get(16)?,
                     source_device_id,
                     is_remote: is_remote != 0,
                     content: truncated_content,
@@ -769,7 +771,8 @@ pub fn get_clipboard_item_id_by_uuid(uuid: &str) -> Result<Option<i64>, String> 
 pub fn get_clipboard_item_by_id_with_limit(id: i64, max_content_length: Option<usize>) -> Result<Option<ClipboardItem>, String> {
     with_connection(|conn| {
         conn.query_row(
-            "SELECT id, uuid, source_device_id, is_remote, content, html_content, content_type, image_id, item_order, is_pinned, paste_count, source_app, source_icon_hash, created_at, updated_at, char_count 
+            "SELECT id, uuid, source_device_id, is_remote, content, html_content, content_type, image_id, item_order, is_pinned, paste_count, source_app, source_icon_hash, created_at, updated_at, char_count,
+                    (SELECT id FROM favorites WHERE source_clipboard_uuid = clipboard.uuid LIMIT 1) AS favorite_id
              FROM clipboard WHERE id = ?",
             params![id],
             |row| {
@@ -801,6 +804,7 @@ pub fn get_clipboard_item_by_id_with_limit(id: i64, max_content_length: Option<u
                 Ok(ClipboardItem {
                     id: row.get(0)?,
                     uuid,
+                    favorite_id: row.get(16)?,
                     source_device_id,
                     is_remote: is_remote != 0,
                     content: final_content,

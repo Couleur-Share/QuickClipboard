@@ -10,7 +10,8 @@ import { showClipboardItemContextMenu } from '@shared/utils/contextMenu';
 import { createDragPreviewIcon, createImagesDragPreviewIcon } from '@shared/utils/dragPreviewIcon';
 import { getPrimaryType } from '@shared/utils/contentType';
 import { useTranslation } from 'react-i18next';
-import { addClipboardToFavorites, togglePinClipboardItem, showPreviewWindow, closePreviewWindow } from '@shared/api';
+import { addClipboardToFavorites, deleteFavorite, togglePinClipboardItem, showPreviewWindow, closePreviewWindow } from '@shared/api';
+import { favoritesStore } from '@shared/store/favoritesStore';
 import { openEditorForClipboard } from '@shared/api/textEditor';
 import { toast, TOAST_SIZES, TOAST_POSITIONS } from '@shared/store/toastStore';
 import { moveClipboardItemToTop } from '@shared/api';
@@ -425,15 +426,27 @@ function ClipboardItem({
   // 处理收藏按钮点击
   const handleFavoriteClick = async e => {
     e.stopPropagation();
+    const favoriteId = item.favorite_id;
+
     try {
+      if (favoriteId) {
+        await deleteFavorite(favoriteId);
+        favoritesStore.removeItem(favoriteId);
+        toast.success(t('favorites.removed'), {
+          size: TOAST_SIZES.EXTRA_SMALL,
+          position: TOAST_POSITIONS.BOTTOM_RIGHT
+        });
+        return;
+      }
+
       await addClipboardToFavorites(item.id);
       toast.success(t('contextMenu.addedToFavorites'), {
         size: TOAST_SIZES.EXTRA_SMALL,
         position: TOAST_POSITIONS.BOTTOM_RIGHT
       });
     } catch (error) {
-      console.error('添加到收藏失败:', error);
-      toast.error(t('contextMenu.addToFavoritesFailed'), {
+      console.error(favoriteId ? '取消收藏失败:' : '添加到收藏失败:', error);
+      toast.error(favoriteId ? t('favorites.removeFailed') : t('contextMenu.addToFavoritesFailed'), {
         size: TOAST_SIZES.EXTRA_SMALL,
         position: TOAST_POSITIONS.BOTTOM_RIGHT
       });
@@ -743,9 +756,13 @@ function ClipboardItem({
       <div className={floatingControlsClasses}>
         {/* 悬停操作按钮组 */}
         {!isMultiSelectMode && <div className={actionGroupClasses} onMouseEnter={closeHoverPreview} onMouseLeave={handleActionGroupMouseLeave}>
-          <Tooltip content={t('contextMenu.addToFavorites')} placement="bottom">
-            <button className={actionButtonClasses} onClick={handleFavoriteClick}>
-              <i className="ti ti-star" style={{ fontSize: 12 }}></i>
+          <Tooltip content={item.favorite_id ? t('favorites.remove') : t('contextMenu.addToFavorites')} placement="bottom">
+            <button
+              className={`${actionButtonClasses} ${item.favorite_id ? 'text-qc-favorite hover:text-qc-favorite bg-qc-active' : ''}`}
+              onClick={handleFavoriteClick}
+              aria-pressed={Boolean(item.favorite_id)}
+            >
+              <i className={item.favorite_id ? 'ti ti-star-filled' : 'ti ti-star'} style={{ fontSize: 12 }}></i>
             </button>
           </Tooltip>
           {(renderType === 'text' || renderType === 'rich_text') && (

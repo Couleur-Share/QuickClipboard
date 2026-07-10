@@ -146,6 +146,9 @@
     "edit": "编辑收藏",
     "editTitle": "编辑标题",
     "titlePlaceholder": "输入标题...",
+    "remove": "取消收藏",
+    "removed": "已取消收藏",
+    "removeFailed": "取消收藏失败",
     "confirmDelete": "确定要删除此收藏项吗？",
     "confirmDeleteTitle": "确认删除"
   },

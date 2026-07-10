@@ -7,6 +7,8 @@ pub struct ClipboardItem {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub uuid: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub favorite_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub source_device_id: Option<String>,
     pub is_remote: bool,
     pub content: String,
