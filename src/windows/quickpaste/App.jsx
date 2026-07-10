@@ -21,7 +21,7 @@ import {
 import { playScrollSound } from '@shared/api';
 
 const ITEM_HEIGHT = 52;
-const ITEM_PADDING = 8;
+const ITEM_PADDING = 16;
 
 function QuickPasteWindow() {
   const { t } = useTranslation();
@@ -50,7 +50,7 @@ function QuickPasteWindow() {
   useEffect(() => {
     const updateVisibleCount = () => {
       if (containerRef.current) {
-        const height = containerRef.current.clientHeight;
+        const height = containerRef.current.clientHeight - ITEM_PADDING * 2;
         const count = Math.floor(height / ITEM_HEIGHT);
         setVisibleCount(Math.max(1, count));
       }
