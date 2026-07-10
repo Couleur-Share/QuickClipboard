@@ -30,7 +30,6 @@ function QuickPasteWindow() {
   const [isHoveringCancel, setIsHoveringCancel] = useState(false);
   const [isContentReady, setIsContentReady] = useState(false);
   const [visibleCount, setVisibleCount] = useState(5);
-  const [scrollOffset, setScrollOffset] = useState(0);
   const showRequestRef = useRef(0);
   const navSnap = useSnapshot(navigationStore);
   const groupSnap = useSnapshot(groupsStore);
@@ -61,6 +60,17 @@ function QuickPasteWindow() {
     return () => window.removeEventListener('resize', updateVisibleCount);
   }, []);
 
+  const scrollOffset = useMemo(() => {
+    if (totalCount <= visibleCount) {
+      return 0;
+    }
+
+    const middlePosition = Math.floor(visibleCount / 2);
+    const idealOffset = activeIndex - middlePosition;
+
+    return Math.max(0, Math.min(idealOffset, totalCount - visibleCount));
+  }, [activeIndex, visibleCount, totalCount]);
+
   // 计算可见的项目范围
   const visibleItems = useMemo(() => {
     const items = [];
@@ -72,20 +82,6 @@ function QuickPasteWindow() {
     }
     return items;
   }, [scrollOffset, visibleCount, totalCount, itemsArray]);
-
-  useEffect(() => {
-    if (totalCount <= visibleCount) {
-      setScrollOffset(0);
-      return;
-    }
-
-    const middlePosition = Math.floor(visibleCount / 2);
-    let idealOffset = activeIndex - middlePosition;
-
-    idealOffset = Math.max(0, Math.min(idealOffset, totalCount - visibleCount));
-    
-    setScrollOffset(idealOffset);
-  }, [activeIndex, visibleCount, totalCount]);
 
   useEffect(() => {
     const loadVisibleData = async () => {
@@ -153,7 +149,6 @@ function QuickPasteWindow() {
       showRequestRef.current = requestId;
       setIsContentReady(false);
       setActiveIndex(0);
-      setScrollOffset(0);
       setIsHoveringCancel(false);
 
       try {
@@ -194,7 +189,6 @@ function QuickPasteWindow() {
   }, []);
   useEffect(() => {
     setActiveIndex(0);
-    setScrollOffset(0);
   }, [navSnap.activeTab, groupSnap.currentGroup, totalCount]);
 
   // 滚轮切换项
