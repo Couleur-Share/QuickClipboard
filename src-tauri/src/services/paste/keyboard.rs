@@ -23,7 +23,7 @@ fn send_key(vk: u16, up: bool) {
                 wScan: 0,
                 dwFlags: if up { KEYEVENTF_KEYUP } else { KEYBD_EVENT_FLAGS(0) },
                 time: 0,
-                dwExtraInfo: 0,
+                dwExtraInfo: crate::services::system::raw_input::PASTE_INPUT_MARKER,
             },
         },
     };
@@ -44,7 +44,7 @@ fn send_key_ex(vk: u16, up: bool, extended: bool) {
                 wScan: 0,
                 dwFlags: flags,
                 time: 0,
-                dwExtraInfo: 0,
+                dwExtraInfo: crate::services::system::raw_input::PASTE_INPUT_MARKER,
             },
         },
     };
@@ -58,20 +58,26 @@ use std::sync::Mutex;
 static CURRENT_TRIGGER_KEY: Mutex<Option<u16>> = Mutex::new(None);
 
 #[cfg(target_os = "windows")]
+static PASTE_SIMULATION_LOCK: Mutex<()> = Mutex::new(());
+
+#[cfg(target_os = "windows")]
 pub fn set_trigger_key_from_shortcut(shortcut: &str) {
     if let Some(vk) = parse_shortcut_key_vk(shortcut) {
-        *CURRENT_TRIGGER_KEY.lock().unwrap() = Some(vk);
+        *CURRENT_TRIGGER_KEY.lock().unwrap_or_else(|error| error.into_inner()) = Some(vk);
     }
 }
 
 #[cfg(target_os = "windows")]
 pub fn set_trigger_key_raw(vk: u16) {
-    *CURRENT_TRIGGER_KEY.lock().unwrap() = Some(vk);
+    *CURRENT_TRIGGER_KEY.lock().unwrap_or_else(|error| error.into_inner()) = Some(vk);
 }
 
 #[cfg(target_os = "windows")]
 fn take_trigger_key() -> Option<u16> {
-    CURRENT_TRIGGER_KEY.lock().unwrap().take()
+    CURRENT_TRIGGER_KEY
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .take()
 }
 
 // 从快捷键字符串解析非修饰键虚拟键码
@@ -108,6 +114,7 @@ fn parse_shortcut_key_vk(shortcut: &str) -> Option<u16> {
 }
 
 #[cfg(target_os = "windows")]
+#[derive(Clone, Copy)]
 struct ModifierState {
     ctrl: bool,
     shift: bool,
@@ -128,7 +135,7 @@ impl ModifierState {
         }
     }
 
-    fn release_all(&self) {
+    fn release_conflicting(&self) {
         if self.ctrl {
             send_key(VK_CONTROL.0, true);
         }
@@ -146,21 +153,38 @@ impl ModifierState {
         }
     }
 
-    fn restore(&self) {
-        if self.ctrl {
-            send_key(VK_CONTROL.0, false);
+    fn physical() -> Option<Self> {
+        crate::services::system::raw_input::get_physical_modifier_keys_state().map(
+            |(ctrl, shift, alt, lwin, rwin)| Self {
+                ctrl,
+                shift,
+                alt,
+                lwin,
+                rwin,
+            },
+        )
+    }
+
+    fn apply(&self) {
+        Self::set_key_state(VK_CONTROL.0, self.ctrl);
+        Self::set_key_state(VK_SHIFT.0, self.shift);
+        Self::set_key_state(VK_MENU.0, self.alt);
+        Self::set_key_state(0x5B, self.lwin);
+        Self::set_key_state(0x5C, self.rwin);
+    }
+
+    fn set_key_state(vk: u16, pressed: bool) {
+        if is_key_pressed(vk) != pressed {
+            send_key(vk, !pressed);
         }
-        if self.shift {
-            send_key(VK_SHIFT.0, false);
-        }
-        if self.alt {
-            send_key(VK_MENU.0, false);
-        }
-        if self.lwin {
-            send_key(0x5B, false);
-        }
-        if self.rwin {
-            send_key(0x5C, false);
+    }
+
+    fn restore_current_physical(&self) {
+        for pass in 0..2 {
+            Self::physical().unwrap_or(*self).apply();
+            if pass == 0 {
+                std::thread::sleep(std::time::Duration::from_millis(2));
+            }
         }
     }
 }
@@ -168,6 +192,10 @@ impl ModifierState {
 // 模拟粘贴
 #[cfg(target_os = "windows")]
 pub fn simulate_paste() -> Result<(), String> {
+    // 完整序列必须串行，避免连续粘贴互相误判对方注入的修饰键。
+    let _paste_guard = PASTE_SIMULATION_LOCK
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
     let settings = crate::get_settings();
     
     if settings.paste_shortcut_mode == "ctrl_v" {
@@ -177,11 +205,11 @@ pub fn simulate_paste() -> Result<(), String> {
     }
 }
 
-// Shift+Insert 粘贴：记录修饰键 → 全部释放 → 纯净粘贴 → 恢复用户仍按住的键
+// Shift+Insert 粘贴：记录修饰键 → 释放冲突键 → 纯净粘贴 → 对齐物理状态
 #[cfg(target_os = "windows")]
 fn simulate_paste_shift_insert() -> Result<(), String> {
     let mods = ModifierState::record();
-    mods.release_all();
+    mods.release_conflicting();
     if let Some(vk) = take_trigger_key() {
         send_key(vk, true);
     }
@@ -195,15 +223,15 @@ fn simulate_paste_shift_insert() -> Result<(), String> {
     send_key_ex(VK_INSERT.0, true, true);
     send_key(VK_SHIFT.0, true);
 
-    mods.restore();
+    mods.restore_current_physical();
     Ok(())
 }
 
-// Ctrl+V 粘贴：记录修饰键 → 全部释放 → 纯净粘贴 → 恢复用户仍按住的键
+// Ctrl+V 粘贴：记录修饰键 → 释放冲突键 → 纯净粘贴 → 对齐物理状态
 #[cfg(target_os = "windows")]
 fn simulate_paste_ctrl_v() -> Result<(), String> {
     let mods = ModifierState::record();
-    mods.release_all();
+    mods.release_conflicting();
     if let Some(vk) = take_trigger_key() {
         send_key(vk, true);
     }
@@ -217,7 +245,7 @@ fn simulate_paste_ctrl_v() -> Result<(), String> {
     send_key(VK_V.0, true);
     send_key(VK_CONTROL.0, true);
 
-    mods.restore();
+    mods.restore_current_physical();
     Ok(())
 }
 

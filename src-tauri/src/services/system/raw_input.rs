@@ -1,8 +1,11 @@
 use super::input_common;
 
 #[cfg(target_os = "windows")]
+pub(crate) const PASTE_INPUT_MARKER: usize = 0x5143_4C50;
+
+#[cfg(target_os = "windows")]
 mod windows_raw_input {
-    use super::input_common;
+    use super::{input_common, PASTE_INPUT_MARKER};
     use once_cell::sync::Lazy;
     use parking_lot::Mutex;
     use std::mem::size_of;
@@ -31,6 +34,9 @@ mod windows_raw_input {
     static RAW_INPUT_THREAD_ID: AtomicU32 = AtomicU32::new(0);
     static CTRL_DOWN: AtomicBool = AtomicBool::new(false);
     static SHIFT_DOWN: AtomicBool = AtomicBool::new(false);
+    static ALT_DOWN: AtomicBool = AtomicBool::new(false);
+    static LWIN_DOWN: AtomicBool = AtomicBool::new(false);
+    static RWIN_DOWN: AtomicBool = AtomicBool::new(false);
     static MIDDLE_BUTTON_DOWN: AtomicBool = AtomicBool::new(false);
     static MIDDLE_BUTTON_PRESS_ID: AtomicU64 = AtomicU64::new(0);
     static PREVIEW_GUARD_PENDING: AtomicBool = AtomicBool::new(false);
@@ -48,10 +54,29 @@ mod windows_raw_input {
     const VK_SHIFT_CODE: u32 = 0x10;
     const VK_LSHIFT_CODE: u32 = 0xA0;
     const VK_RSHIFT_CODE: u32 = 0xA1;
+    const VK_MENU_CODE: u32 = 0x12;
+    const VK_LMENU_CODE: u32 = 0xA4;
+    const VK_RMENU_CODE: u32 = 0xA5;
+    const VK_LWIN_CODE: u32 = 0x5B;
+    const VK_RWIN_CODE: u32 = 0x5C;
     const VK_INSERT_CODE: u32 = 0x2D;
     const PREVIEW_GUARD_THROTTLE_MS: u64 = 50;
     const QUICKPASTE_REPEAT_INITIAL_DELAY_MS: u64 = 300;
     const QUICKPASTE_REPEAT_INTERVAL_MS: u64 = 120;
+
+    pub(crate) fn get_physical_modifier_keys_state() -> Option<(bool, bool, bool, bool, bool)> {
+        if !RAW_INPUT_ACTIVE.load(Ordering::SeqCst) {
+            return None;
+        }
+
+        Some((
+            CTRL_DOWN.load(Ordering::Relaxed),
+            SHIFT_DOWN.load(Ordering::Relaxed),
+            ALT_DOWN.load(Ordering::Relaxed),
+            LWIN_DOWN.load(Ordering::Relaxed),
+            RWIN_DOWN.load(Ordering::Relaxed),
+        ))
+    }
 
     pub(crate) fn guard_tray_click_region(x: i32, y: i32, width: u32, height: u32) {
         let right = x.saturating_add(width.min(i32::MAX as u32) as i32);
@@ -264,6 +289,13 @@ mod windows_raw_input {
                 let is_keydown = message == WM_KEYDOWN || message == WM_SYSKEYDOWN;
                 let is_keyup = message == WM_KEYUP || message == WM_SYSKEYUP;
 
+                if kb.ExtraInformation as usize == PASTE_INPUT_MARKER {
+                    if is_keydown && (vkey == b'V' as u32 || vkey == VK_INSERT_CODE) {
+                        AppSounds::play_paste_immediate();
+                    }
+                    return;
+                }
+
                 handle_quickpaste_keyboard_event(vkey, is_keydown, is_keyup);
 
                 if vkey == VK_CONTROL_CODE || vkey == VK_LCONTROL_CODE || vkey == VK_RCONTROL_CODE {
@@ -280,6 +312,25 @@ mod windows_raw_input {
                         SHIFT_DOWN.store(true, Ordering::Relaxed);
                     } else if is_keyup {
                         SHIFT_DOWN.store(false, Ordering::Relaxed);
+                    }
+                    return;
+                }
+
+                if vkey == VK_MENU_CODE || vkey == VK_LMENU_CODE || vkey == VK_RMENU_CODE {
+                    if is_keydown {
+                        ALT_DOWN.store(true, Ordering::Relaxed);
+                    } else if is_keyup {
+                        ALT_DOWN.store(false, Ordering::Relaxed);
+                    }
+                    return;
+                }
+
+                if vkey == VK_LWIN_CODE || vkey == VK_RWIN_CODE {
+                    let state = if vkey == VK_LWIN_CODE { &LWIN_DOWN } else { &RWIN_DOWN };
+                    if is_keydown {
+                        state.store(true, Ordering::Relaxed);
+                    } else if is_keyup {
+                        state.store(false, Ordering::Relaxed);
                     }
                     return;
                 }
@@ -849,6 +900,7 @@ mod windows_raw_input {
 pub(crate) use windows_raw_input::{
     disable_quickpaste_keyboard_mode,
     enable_quickpaste_keyboard_mode,
+    get_physical_modifier_keys_state,
     guard_tray_click_region,
     start_quickpaste_secondary_key_hold,
     start_raw_input_if_needed,
