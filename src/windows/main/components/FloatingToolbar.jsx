@@ -1,6 +1,6 @@
 import '@tabler/icons-webfont/dist/tabler-icons.min.css';
 import { useTranslation } from 'react-i18next';
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useLayoutEffect } from 'react';
 import Tooltip from '@shared/components/common/Tooltip.jsx';
 function FloatingToolbar({
   showScrollTop = false,
@@ -24,25 +24,35 @@ function FloatingToolbar({
   const shouldShow = showScrollTop || showAddFavorite;
 
   // 计算最大位置并调整当前位置
-  useEffect(() => {
-    if (!containerRef.current) return;
+  useLayoutEffect(() => {
+    if (!shouldShow || !containerRef.current) return undefined;
+
+    const toolbar = containerRef.current;
+    const parent = toolbar.offsetParent;
+    if (!parent) return undefined;
+
     const updateMaxBottom = () => {
-      const parent = containerRef.current.offsetParent;
-      if (parent) {
-        const parentHeight = parent.clientHeight;
-        const toolbarHeight = containerRef.current.clientHeight;
-        const newMaxBottom = parentHeight - toolbarHeight - 16;
-        setMaxBottom(newMaxBottom);
-        setBottomPosition(prev => Math.min(prev, newMaxBottom));
-      }
+      const parentHeight = parent.clientHeight;
+      const toolbarHeight = toolbar.clientHeight;
+      const newMaxBottom = parentHeight - toolbarHeight - 16;
+      setMaxBottom(current => current === newMaxBottom ? current : newMaxBottom);
+      setBottomPosition(current => Math.min(current, newMaxBottom));
     };
-    const timer = setTimeout(updateMaxBottom, 250);
+
+    updateMaxBottom();
+
+    if (typeof ResizeObserver !== 'undefined') {
+      const observer = new ResizeObserver(updateMaxBottom);
+      observer.observe(parent);
+      observer.observe(toolbar);
+      return () => observer.disconnect();
+    }
+
     window.addEventListener('resize', updateMaxBottom);
     return () => {
-      clearTimeout(timer);
       window.removeEventListener('resize', updateMaxBottom);
     };
-  }, [shouldShow, showScrollTop, showAddFavorite]);
+  }, [shouldShow]);
 
   // 处理拖拽开始
   const handleDragStart = e => {

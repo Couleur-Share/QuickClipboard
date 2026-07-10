@@ -41,6 +41,7 @@ function TextContent({
     }
 
     let frameId = null;
+    let lastWrapperHeight = null;
 
     const applyLineHeight = () => {
       const wrapperHeight = wrapper.getBoundingClientRect().height;
@@ -49,6 +50,10 @@ function TextContent({
       if (!Number.isFinite(nextLineHeight) || nextLineHeight <= 0) {
         return;
       }
+      if (lastWrapperHeight !== null && Math.abs(wrapperHeight - lastWrapperHeight) < 0.1) {
+        return;
+      }
+      lastWrapperHeight = wrapperHeight;
 
       // 向下取整，避免 WebView 子像素取整后最后一行超出内容区而被整行裁掉。
       container.style.lineHeight = `${nextLineHeight}px`;
@@ -81,7 +86,15 @@ function TextContent({
       };
     }
 
-    const resizeObserver = new ResizeObserver(scheduleLineHeightUpdate);
+    const resizeObserver = new ResizeObserver(entries => {
+      const nextHeight = entries[0]?.contentRect.height;
+      if (Number.isFinite(nextHeight)
+        && lastWrapperHeight !== null
+        && Math.abs(nextHeight - lastWrapperHeight) < 0.1) {
+        return;
+      }
+      scheduleLineHeightUpdate();
+    });
     resizeObserver.observe(wrapper);
 
     return () => {

@@ -34,10 +34,15 @@ const TAB_NAVIGATION_MODE = {
   HORIZONTAL: 'horizontal',
   SIDEBAR: 'sidebar'
 };
+const SIDEBAR_TABS_MEDIA_QUERY = '(min-width: 550px)';
 const WEBDAV_TOAST_CONFIG = {
   size: TOAST_SIZES.EXTRA_SMALL,
   position: TOAST_POSITIONS.BOTTOM_RIGHT
 };
+
+function getIsSidebarTabsLayout() {
+  return typeof window !== 'undefined' && window.matchMedia(SIDEBAR_TABS_MEDIA_QUERY).matches;
+}
 
 function App() {
   const {
@@ -61,16 +66,14 @@ function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [emojiMode, setEmojiMode] = useState('emoji'); // 'emoji' | 'symbols' | 'images'
   const [updateBannerState, setUpdateBannerState] = useState(null);
-  const [windowWidth, setWindowWidth] = useState(() => (typeof window !== 'undefined' ? window.innerWidth : 0));
+  const [isSidebarTabsLayout, setIsSidebarTabsLayout] = useState(getIsSidebarTabsLayout);
   const clipboardTabRef = useRef(null);
   const favoritesTabRef = useRef(null);
   const groupsPopupRef = useRef(null);
   const searchRef = useRef(null);
-  const sidebarTabsBreakpoint = 550;
-  const tabNavigationMode = windowWidth >= sidebarTabsBreakpoint
+  const tabNavigationMode = isSidebarTabsLayout
     ? TAB_NAVIGATION_MODE.SIDEBAR
     : TAB_NAVIGATION_MODE.HORIZONTAL;
-  const isSidebarTabsLayout = tabNavigationMode === TAB_NAVIGATION_MODE.SIDEBAR;
 
   // 监听设置变更事件
   useSettingsSync();
@@ -125,16 +128,26 @@ function App() {
   // 窗口动画
   useWindowAnimation();
 
-  // 监听窗口宽度，切换 Tab 栏布局模式
+  // 仅在跨越布局断点时更新，避免缩放期间持续重渲染整个主窗口。
   useEffect(() => {
-    const updateWindowWidth = () => {
-      setWindowWidth(typeof window !== 'undefined' ? window.innerWidth : 0);
+    const mediaQuery = window.matchMedia(SIDEBAR_TABS_MEDIA_QUERY);
+    const updateLayoutMode = event => {
+      setIsSidebarTabsLayout(event.matches);
     };
 
-    updateWindowWidth();
-    window.addEventListener('resize', updateWindowWidth);
+    setIsSidebarTabsLayout(mediaQuery.matches);
+    if (typeof mediaQuery.addEventListener === 'function') {
+      mediaQuery.addEventListener('change', updateLayoutMode);
+    } else {
+      mediaQuery.addListener(updateLayoutMode);
+    }
+
     return () => {
-      window.removeEventListener('resize', updateWindowWidth);
+      if (typeof mediaQuery.removeEventListener === 'function') {
+        mediaQuery.removeEventListener('change', updateLayoutMode);
+      } else {
+        mediaQuery.removeListener(updateLayoutMode);
+      }
     };
   }, []);
 

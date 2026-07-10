@@ -48,6 +48,21 @@ function measureIndicator(activeElement, containerElement) {
   };
 }
 
+function applyIndicatorPosition(indicatorElement, position) {
+  if (!indicatorElement || !position) {
+    return;
+  }
+
+  const width = `${position.width}px`;
+  const left = `${position.left}px`;
+  if (indicatorElement.style.width !== width) {
+    indicatorElement.style.width = width;
+  }
+  if (indicatorElement.style.left !== left) {
+    indicatorElement.style.left = left;
+  }
+}
+
 function TabNavigation({
   activeTab,
   onTabChange,
@@ -73,19 +88,9 @@ function TabNavigation({
   const emojiModesRef = useRef({});
   const tabsContainerRef = useRef(null);
   const controlsContainerRef = useRef(null);
+  const tabIndicatorRef = useRef(null);
+  const controlsIndicatorRef = useRef(null);
   const rightAreaRef = useRef(null);
-  const [tabIndicator, setTabIndicator] = useState({
-    width: 0,
-    left: 0
-  });
-  const [filterIndicator, setFilterIndicator] = useState({
-    width: 0,
-    left: 0
-  });
-  const [emojiModeIndicator, setEmojiModeIndicator] = useState({
-    width: 0,
-    left: 0
-  });
   const [tabAnimationKey, setTabAnimationKey] = useState(0);
   const [filterAnimationKey, setFilterAnimationKey] = useState(0);
   const [emojiModeAnimationKey, setEmojiModeAnimationKey] = useState(0);
@@ -168,13 +173,7 @@ function TabNavigation({
   const updateTabIndicator = useCallback(() => {
     const activeElement = tabsRef.current[activeTab];
     const nextIndicator = measureIndicator(activeElement, tabsContainerRef.current);
-    if (nextIndicator) {
-      setTabIndicator(current => (
-        current.width === nextIndicator.width && current.left === nextIndicator.left
-          ? current
-          : nextIndicator
-      ));
-    }
+    applyIndicatorPosition(tabIndicatorRef.current, nextIndicator);
   }, [activeTab]);
 
   const updateFilterIndicator = useCallback(() => {
@@ -183,34 +182,18 @@ function TabNavigation({
     const isHiddenInCollapsedState = !shouldExpandFilters && activeFilterIndex >= collapsedVisibleFilterCount;
 
     if (isHiddenInCollapsedState) {
-      setFilterIndicator(current => (
-        current.width === 0 && current.left === 0
-          ? current
-          : { width: 0, left: 0 }
-      ));
+      applyIndicatorPosition(controlsIndicatorRef.current, { width: 0, left: 0 });
       return;
     }
 
     const nextIndicator = measureIndicator(activeElement, controlsContainerRef.current);
-    if (nextIndicator) {
-      setFilterIndicator(current => (
-        current.width === nextIndicator.width && current.left === nextIndicator.left
-          ? current
-          : nextIndicator
-      ));
-    }
+    applyIndicatorPosition(controlsIndicatorRef.current, nextIndicator);
   }, [contentFilter, shouldExpandFilters, collapsedVisibleFilterCount]);
 
   const updateEmojiModeIndicator = useCallback(() => {
     const activeElement = emojiModesRef.current[emojiMode];
     const nextIndicator = measureIndicator(activeElement, controlsContainerRef.current);
-    if (nextIndicator) {
-      setEmojiModeIndicator(current => (
-        current.width === nextIndicator.width && current.left === nextIndicator.left
-          ? current
-          : nextIndicator
-      ));
-    }
+    applyIndicatorPosition(controlsIndicatorRef.current, nextIndicator);
   }, [emojiMode]);
 
   useEffect(() => {
@@ -312,10 +295,10 @@ function TabNavigation({
     }
   }, [isFilterAutoExpanded]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!isSidebarLayout) {
       setSidebarFixedWidth(null);
-      return;
+      return undefined;
     }
 
     const updateSidebarWidth = () => {
@@ -328,10 +311,16 @@ function TabNavigation({
     };
 
     updateSidebarWidth();
-    const id = requestAnimationFrame(updateSidebarWidth);
+
+    const target = sidebarTabsMainRef.current;
+    if (typeof ResizeObserver !== 'undefined' && target) {
+      const observer = new ResizeObserver(updateSidebarWidth);
+      observer.observe(target);
+      return () => observer.disconnect();
+    }
+
     window.addEventListener('resize', updateSidebarWidth);
     return () => {
-      cancelAnimationFrame(id);
       window.removeEventListener('resize', updateSidebarWidth);
     };
   }, [isSidebarLayout, sidebarShowLabel, tabs.length]);
@@ -641,10 +630,8 @@ function TabNavigation({
       >
         <div ref={tabsContainerRef} className={isSidebarLayout ? 'flex flex-col gap-1 w-full' : 'flex items-center justify-center gap-1 w-full relative'}>
           {!isSidebarLayout && (
-            <div className={`absolute rounded-lg pointer-events-none ${uiAnimationEnabled ? 'transition-all duration-300 ease-out' : ''}`} style={{
-              width: `${tabIndicator.width}px`,
+            <div ref={tabIndicatorRef} className={`absolute left-0 w-0 rounded-lg pointer-events-none ${uiAnimationEnabled ? 'transition-all duration-300 ease-out' : ''}`} style={{
               height: '28px',
-              left: `${tabIndicator.left}px`,
               top: '50%',
               transform: 'translateY(-50%)'
             }}>
@@ -692,10 +679,8 @@ function TabNavigation({
           onMouseLeave={activeTab === 'emoji' ? undefined : handleFilterAreaMouseLeave}
         >
           {!isSidebarLayout && (
-            <div className={`absolute rounded-lg pointer-events-none ${uiAnimationEnabled ? 'transition-all duration-300 ease-out' : ''}`} style={{
-              width: `${activeTab === 'emoji' ? emojiModeIndicator.width : filterIndicator.width}px`,
+            <div ref={controlsIndicatorRef} className={`absolute left-0 w-0 rounded-lg pointer-events-none ${uiAnimationEnabled ? 'transition-all duration-300 ease-out' : ''}`} style={{
               height: '28px',
-              left: `${activeTab === 'emoji' ? emojiModeIndicator.left : filterIndicator.left}px`,
               top: '50%',
               transform: 'translateY(-50%)'
             }}>

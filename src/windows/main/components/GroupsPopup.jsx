@@ -1,6 +1,6 @@
 import '@tabler/icons-webfont/dist/tabler-icons.min.css';
 import { useSnapshot } from 'valtio';
-import { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
+import { useState, useRef, useEffect, useLayoutEffect, forwardRef, useImperativeHandle } from 'react';
 import { useTranslation } from 'react-i18next';
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
@@ -176,8 +176,8 @@ const GroupsPopup = forwardRef(({
     };
   }, []);
 
-  useEffect(() => {
-    if (!isTabMode) {
+  useLayoutEffect(() => {
+    if (!isTabMode || !isOpen) {
       return undefined;
     }
 
@@ -195,25 +195,26 @@ const GroupsPopup = forwardRef(({
         || mainContainerElement?.clientWidth
         || window.innerWidth;
       const nextWidth = Math.floor(baseWidth);
-      setTabPanelWidth(nextWidth);
+      setTabPanelWidth(current => current === nextWidth ? current : nextWidth);
 
       const alignElement = tabRightAreaElement || tabNavigationElement;
       if (alignElement) {
         const alignRect = alignElement.getBoundingClientRect();
         const rootRect = rootElement.getBoundingClientRect();
         const nextRightOffset = alignRect.right - rootRect.right;
-        setTabPanelRightOffset(nextRightOffset);
+        setTabPanelRightOffset(current => current === nextRightOffset ? current : nextRightOffset);
       } else {
-        setTabPanelRightOffset(0);
+        setTabPanelRightOffset(current => current === 0 ? current : 0);
       }
 
       if (tabNavigationElement) {
         const tabNavigationRect = tabNavigationElement.getBoundingClientRect();
         const rootRect = rootElement.getBoundingClientRect();
         const nextTopOffset = Math.round(tabNavigationRect.bottom - rootRect.top - 1);
-        setTabPanelTopOffset(nextTopOffset);
+        setTabPanelTopOffset(current => current === nextTopOffset ? current : nextTopOffset);
       } else {
-        setTabPanelTopOffset(rootElement.clientHeight - 1);
+        const nextTopOffset = rootElement.clientHeight - 1;
+        setTabPanelTopOffset(current => current === nextTopOffset ? current : nextTopOffset);
       }
     };
 
