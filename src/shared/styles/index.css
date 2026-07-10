@@ -29,6 +29,8 @@ body {
   --qc-active: rgba(59, 130, 246, 0.12);
   --qc-border: rgba(17, 24, 39, 0.12);
   --qc-border-strong: rgba(17, 24, 39, 0.22);
+  --qc-search-highlight-bg: #fde047;
+  --qc-search-highlight-fg: #111827;
 
   /* accent (for slider/radio/etc.) */
   --qc-accent: #3b82f6;
