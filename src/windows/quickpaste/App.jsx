@@ -28,8 +28,10 @@ function QuickPasteWindow() {
   const containerRef = useRef(null);
   const [activeIndex, setActiveIndex] = useState(0);
   const [isHoveringCancel, setIsHoveringCancel] = useState(false);
+  const [isContentReady, setIsContentReady] = useState(false);
   const [visibleCount, setVisibleCount] = useState(5);
   const [scrollOffset, setScrollOffset] = useState(0);
+  const showRequestRef = useRef(0);
   const navSnap = useSnapshot(navigationStore);
   const groupSnap = useSnapshot(groupsStore);
   const clipSnap = useSnapshot(clipboardStore);
@@ -131,6 +133,9 @@ function QuickPasteWindow() {
   // 窗口隐藏时执行粘贴
   useEffect(() => {
     const unlisten = listen('quickpaste-hide', async () => {
+      showRequestRef.current += 1;
+      setIsContentReady(false);
+
       if (isHoveringCancel) return;
       const item = itemsArray[activeIndex];
       if (!item) return;
@@ -144,6 +149,13 @@ function QuickPasteWindow() {
   }, [isHoveringCancel, activeIndex, itemsArray, isClipboardTab]);
   useEffect(() => {
     const unlisten = listen('quickpaste-show', async () => {
+      const requestId = showRequestRef.current + 1;
+      showRequestRef.current = requestId;
+      setIsContentReady(false);
+      setActiveIndex(0);
+      setScrollOffset(0);
+      setIsHoveringCancel(false);
+
       try {
         if (navigationStore.activeTab === 'clipboard') {
           await initClipboardItems();
@@ -154,11 +166,16 @@ function QuickPasteWindow() {
         console.error('刷新便捷粘贴数据失败:', error);
       }
 
-      setActiveIndex(0);
-      setScrollOffset(0);
-      setIsHoveringCancel(false);
+      requestAnimationFrame(() => {
+        if (showRequestRef.current === requestId) {
+          setIsContentReady(true);
+        }
+      });
     });
-    return () => unlisten.then(fn => fn());
+    return () => {
+      showRequestRef.current += 1;
+      unlisten.then(fn => fn());
+    };
   }, []);
   useEffect(() => {
     const unlisten = listen('navigation-changed', async event => {
@@ -301,7 +318,7 @@ function QuickPasteWindow() {
   };
 
   return (
-    <div className={`absolute inset-0 ${isDark ? 'dark' : ''}`}>
+    <div className={`absolute inset-0 transition-opacity duration-100 ease-out ${isContentReady ? 'visible opacity-100' : 'invisible opacity-0'} ${isDark ? 'dark' : ''}`}>
       <style>{`
         *, *::before, *::after { box-sizing: border-box; }
         :root, html, body, #root { background: transparent !important; background-color: transparent !important; }
