@@ -44,14 +44,15 @@ function TextContent({
 
     const applyLineHeight = () => {
       const wrapperHeight = wrapper.getBoundingClientRect().height;
-      const nextLineHeight = wrapperHeight / clampLineCount;
+      const nextLineHeight = Math.floor((wrapperHeight / clampLineCount) * 100) / 100;
 
       if (!Number.isFinite(nextLineHeight) || nextLineHeight <= 0) {
         return;
       }
 
-      container.style.lineHeight = `${Number(nextLineHeight.toFixed(2))}px`;
-      container.style.maxHeight = `${Number(wrapperHeight.toFixed(2))}px`;
+      // 向下取整，避免 WebView 子像素取整后最后一行超出内容区而被整行裁掉。
+      container.style.lineHeight = `${nextLineHeight}px`;
+      container.style.removeProperty('max-height');
     };
 
     const scheduleLineHeightUpdate = () => {
