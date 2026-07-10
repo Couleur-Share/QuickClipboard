@@ -1,6 +1,6 @@
 import '@tabler/icons-webfont/dist/tabler-icons.min.css';
 import { useTranslation } from 'react-i18next';
-import { useRef, useEffect, useState, useCallback } from 'react';
+import { useRef, useEffect, useLayoutEffect, useState, useCallback } from 'react';
 import { useSnapshot } from 'valtio';
 import { settingsStore } from '@shared/store/settingsStore';
 import { normalizeVisibleOptionalTabs } from '@shared/constants/tabVisibility';
@@ -35,6 +35,19 @@ function getVisibleFilterCountByWidth(width, groupButtonWidth) {
   return 1;
 }
 
+function measureIndicator(activeElement, containerElement) {
+  if (!activeElement || !containerElement || !containerElement.contains(activeElement)) {
+    return null;
+  }
+
+  const activeRect = activeElement.getBoundingClientRect();
+  const containerRect = containerElement.getBoundingClientRect();
+  return {
+    width: activeRect.width,
+    left: activeRect.left - containerRect.left
+  };
+}
+
 function TabNavigation({
   activeTab,
   onTabChange,
@@ -58,6 +71,8 @@ function TabNavigation({
   const tabsRef = useRef({});
   const filtersRef = useRef({});
   const emojiModesRef = useRef({});
+  const tabsContainerRef = useRef(null);
+  const controlsContainerRef = useRef(null);
   const rightAreaRef = useRef(null);
   const [tabIndicator, setTabIndicator] = useState({
     width: 0,
@@ -152,11 +167,13 @@ function TabNavigation({
 
   const updateTabIndicator = useCallback(() => {
     const activeElement = tabsRef.current[activeTab];
-    if (activeElement) {
-      setTabIndicator({
-        width: activeElement.offsetWidth,
-        left: activeElement.offsetLeft
-      });
+    const nextIndicator = measureIndicator(activeElement, tabsContainerRef.current);
+    if (nextIndicator) {
+      setTabIndicator(current => (
+        current.width === nextIndicator.width && current.left === nextIndicator.left
+          ? current
+          : nextIndicator
+      ));
     }
   }, [activeTab]);
 
@@ -166,30 +183,33 @@ function TabNavigation({
     const isHiddenInCollapsedState = !shouldExpandFilters && activeFilterIndex >= collapsedVisibleFilterCount;
 
     if (isHiddenInCollapsedState) {
-      setFilterIndicator({
-        width: 0,
-        left: 0
-      });
+      setFilterIndicator(current => (
+        current.width === 0 && current.left === 0
+          ? current
+          : { width: 0, left: 0 }
+      ));
       return;
     }
 
-    if (!activeElement) {
-      return;
+    const nextIndicator = measureIndicator(activeElement, controlsContainerRef.current);
+    if (nextIndicator) {
+      setFilterIndicator(current => (
+        current.width === nextIndicator.width && current.left === nextIndicator.left
+          ? current
+          : nextIndicator
+      ));
     }
-
-    setFilterIndicator({
-      width: activeElement.offsetWidth,
-      left: activeElement.offsetLeft
-    });
   }, [contentFilter, shouldExpandFilters, collapsedVisibleFilterCount]);
 
   const updateEmojiModeIndicator = useCallback(() => {
     const activeElement = emojiModesRef.current[emojiMode];
-    if (activeElement) {
-      setEmojiModeIndicator({
-        width: activeElement.offsetWidth,
-        left: activeElement.offsetLeft
-      });
+    const nextIndicator = measureIndicator(activeElement, controlsContainerRef.current);
+    if (nextIndicator) {
+      setEmojiModeIndicator(current => (
+        current.width === nextIndicator.width && current.left === nextIndicator.left
+          ? current
+          : nextIndicator
+      ));
     }
   }, [emojiMode]);
 
@@ -207,24 +227,19 @@ function TabNavigation({
       return undefined;
     }
 
-    updateTabIndicator();
     const timer = setTimeout(() => {
       setTabAnimationKey(prev => prev + 1);
     }, 300);
     return () => {
       clearTimeout(timer);
     };
-  }, [updateTabIndicator, isSidebarLayout, tabs.length, horizontalTabAreaPercent]);
+  }, [activeTab, isSidebarLayout]);
 
   useEffect(() => {
     if (!isSidebarLayout) {
       setIsSidebarCollapsed(false);
     }
   }, [isSidebarLayout]);
-
-  useEffect(() => {
-    updateFilterIndicator();
-  }, [updateFilterIndicator, activeTab, tabs.length, horizontalRightAreaPercent, collapsedVisibleFilterCount, shouldExpandFilters]);
 
   useEffect(() => {
     if (activeTab === 'emoji') {
@@ -239,14 +254,13 @@ function TabNavigation({
   }, [contentFilter, activeTab]);
 
   useEffect(() => {
-    updateEmojiModeIndicator();
     const timer = setTimeout(() => {
       setEmojiModeAnimationKey(prev => prev + 1);
     }, 300);
     return () => {
       clearTimeout(timer);
     };
-  }, [updateEmojiModeIndicator, tabs.length, horizontalRightAreaPercent]);
+  }, [emojiMode]);
 
   useEffect(() => {
     setIsFilterExpanded(false);
@@ -322,21 +336,84 @@ function TabNavigation({
     };
   }, [isSidebarLayout, sidebarShowLabel, tabs.length]);
 
-  // 监听窗口大小变化
-  useEffect(() => {
-    const handleResize = () => {
-      if (!isSidebarLayout) {
-        updateTabIndicator();
+  useLayoutEffect(() => {
+    if (isSidebarLayout) {
+      return undefined;
+    }
+
+    let frameId = null;
+    let disposed = false;
+
+    const updateIndicators = () => {
+      if (disposed) {
+        return;
       }
+
+      updateTabIndicator();
       updateFilterIndicator();
       updateEmojiModeIndicator();
     };
-    window.addEventListener('resize', handleResize);
-    handleResize();
-    return () => {
-      window.removeEventListener('resize', handleResize);
+
+    const scheduleUpdate = () => {
+      if (disposed) {
+        return;
+      }
+      if (frameId !== null) {
+        cancelAnimationFrame(frameId);
+      }
+      frameId = requestAnimationFrame(() => {
+        frameId = null;
+        updateIndicators();
+      });
     };
-  }, [updateTabIndicator, updateFilterIndicator, updateEmojiModeIndicator, isSidebarLayout]);
+
+    updateIndicators();
+
+    let observer = null;
+    if (typeof ResizeObserver !== 'undefined') {
+      observer = new ResizeObserver(scheduleUpdate);
+      const observedElements = new Set();
+
+      const addElementAndParents = (element, container) => {
+        let current = element;
+        while (current && container?.contains(current)) {
+          observedElements.add(current);
+          if (current === container) {
+            break;
+          }
+          current = current.parentElement;
+        }
+      };
+
+      const tabContainer = tabsContainerRef.current;
+      const controlsContainer = controlsContainerRef.current;
+      Object.values(tabsRef.current).forEach(element => addElementAndParents(element, tabContainer));
+      Object.values(filtersRef.current).forEach(element => addElementAndParents(element, controlsContainer));
+      Object.values(emojiModesRef.current).forEach(element => addElementAndParents(element, controlsContainer));
+      if (tabContainer) observedElements.add(tabContainer);
+      if (controlsContainer) observedElements.add(controlsContainer);
+
+      observedElements.forEach(element => observer.observe(element));
+    } else {
+      window.addEventListener('resize', scheduleUpdate);
+    }
+
+    return () => {
+      disposed = true;
+      if (frameId !== null) {
+        cancelAnimationFrame(frameId);
+      }
+      observer?.disconnect();
+      if (!observer) {
+        window.removeEventListener('resize', scheduleUpdate);
+      }
+    };
+  }, [
+    updateTabIndicator,
+    updateFilterIndicator,
+    updateEmojiModeIndicator,
+    isSidebarLayout
+  ]);
 
   const handleEmojiModeChange = (id) => {
     onEmojiModeChange(id);
@@ -562,7 +639,7 @@ function TabNavigation({
           flex: `0 0 calc(${horizontalTabAreaPercent}% - 1px)`
         } : undefined}
       >
-        <div className={isSidebarLayout ? 'flex flex-col gap-1 w-full' : 'flex items-center justify-center gap-1 w-full relative'}>
+        <div ref={tabsContainerRef} className={isSidebarLayout ? 'flex flex-col gap-1 w-full' : 'flex items-center justify-center gap-1 w-full relative'}>
           {!isSidebarLayout && (
             <div className={`absolute rounded-lg pointer-events-none ${uiAnimationEnabled ? 'transition-all duration-300 ease-out' : ''}`} style={{
               width: `${tabIndicator.width}px`,
@@ -606,6 +683,7 @@ function TabNavigation({
         } : undefined}
       >
         <div
+          ref={controlsContainerRef}
           className={`flex min-w-0 max-w-full items-center gap-1 relative overflow-visible ${
             activeTab === 'emoji' || isFilterAutoExpanded
               ? 'w-full justify-center'
